@@ -279,20 +279,88 @@ run_with_cgi(Latinator(foo_app))
 
 最后要说的是，服务器和网关不能使用应用程序返回的可迭代者(iterable)的其他任何属性，除非是针对服务器或网关的特定类型的实例，比如wsgi.file_wrapper返回的“file wrapper”（阅读 Optional Platform-Specific File Handling )。通常情况下，只有在这里指定的属性，或者通过PEP 234 iteration APIs访问的属性才是可以接受的。
 
-####environ变量
-```
-pass
-```
-HTTP_ 变量
-  
-  ```
-pass
-```
+#### environ变量 (Done)
 
-####输入和错误流
-```
-pass
-```
+`environ`字典被用来包含这些CGI环境变量，这些变量定义可以在Common Gateway Interface specification [2]中找到。下面所列出的这些变量必须给定，除非它们的值是空字符串,在这种情况下如果下面没有特别指出的话他们会被忽略。
+
+------
+__REQUEST_METHOD__  
+HTTP的请求方式, 比如 "GET" 或者 "POST"。这个参数永远不可能是空字符串，故必须给出。
+
+------
+__SCRIPT_NAME__  
+URL请求中'路径'('path')的开始部分，对应了应用程序对象，这样应用程序就知道它的虚拟位置。如果该应用程序对应服务器的 根目录的话， 那么`SCRIPT_NAME`的值可能为空字符串。
+
+------
+__PATH_INFO__  
+URL请求中'路径'('path')的其余部分，指定请求的目标在应用程序内部的虚拟位置。如果请求的目标是应用程序根目录并且末尾没有'/'符号结尾的话，那么`PATH_INFO`可能为空字符串 。
+
+------
+__QUERY_STRING__  
+URL请求中紧跟在"?"后面的那部分，它可以为空或者不存在。
+
+------
+__CONTENT_TYPE__  
+HTTP请求中`Content-Type`字段包含的所有内容，它可以为空或者不存在。
+
+------
+__CONTENT_LENGTH__  
+HTTP请求中`Content-Length`字段包含的所有内容，它可以为空或者不存在。
+
+------
+__SERVER_NAME, SERVER_PORT__  
+这两个变量可以和 SCRIPT_NAME、PATH_INFO 一起组成一个完整的URL。然而要注意的是，如果有出现HTTP_HOST，那么在重建URL请求的时候应当优先使用 HTTP_HOST而非 SERVER_NAME 。详细内容请阅读下面的 `URL Reconstruction`这一章节 。SERVER_NAME 和 SERVER_PORT这两个变量永远不可能是空字符串，并且总是必须给定的。
+
+------
+__SERVER_PROTOCOL__  
+客户端发送请求的时候所使用的协议版本。通常是类似"HTTP/1.0" 或 "HTTP/1.1"这样的字符串，可以被应用程序用来判断如何处理请求HTTP请求报头。（事实上我认为这个变量更应该被叫做 REQUEST_PROTOCOL，因为这个变量代表的是在请求中使用的协议，而且看样子和服务器响应时使用的协议毫无关系。 。然而，为了保持和CGI的兼容性，这里我们还是沿用已有的名字SERVER_PROTOCOL)
+
+------
+__HTTP_ 变量组__  
+这组变量对应着客户端提供的HTTP请求报头(即那些名字以 "HTTP_" 开头的变量)。这组变量的存在与否应该和HTTP请求中相对应的HTTP报头保持一致。
+
+------
+一个服务器或网关应该尽可能多地提供其他可用的CGI变量。另外，如果启用了SSL，服务器或网关应该也尽可能地提供可用的Apache SSL环境变量 [5] ，比如 HTTPS=on 和SSL_PROTOCOL。不过要注意，任何使用了上面没有列出的变量的应用程序对不支持相关扩展的服务器来说就必然有点不可移植的缺点了。(比如，不发布文件的web服务器就没法提供一个有意义的 ``DOCUMENT_ROOT 或 PATH_TRANSLATED变量。)
+ 
+一个支持WSGI的服务器或网关应该在文档中描述它们自己的定义的同时，适当地说明下它们可以提供些什么变量。而应用程序这边应该对所有它们要求的每一个变量的存在性进行检查，并且在检查到某些变量不存在时有备用的措施。
+ 
+注意: 缺少变量 (比如在不需要验证的情况下的 REMOTE_USER ) 应该被排除在`environ`字典之外。同样需要注意，CGI定义的变量如果存在的话必须是字符串。任何除字符串类型以外的CGI变量的存在都是违反本规范的。
+
+除了CGI定义的变量，`environ` 字典也可以包含任意操作系统的环境变量，并且必须包含下面这些WSGI定义的变量:
+
+| 变量        | 值    |
+| --------   | -----| 
+| wsgi.version	| 元组tuple (1, 0)，代表WSGI版本 1.0 |   
+|wsgi.url_scheme| 应用程序被调用过程中的一个字符串，表示URL中的"scheme"部分。正常情况下，它的值是"http"或者"https"，视场合而定。| 
+|wsgi.input	|一个能被HTTP请求主体(body)读取的输入流(类文件对象)(服务器或者网关在读取的时候可能是按需读取，因为应用程序不定时发来请求。或者它们会预读取客户端的请求体然后缓存在内存或者磁盘中，又或者根据它自己的参数，利用其他任意的技术来提供这样一种输入流)|  
+|wsgi.errors|输出流(类文件对象)，用来写错误信息的，目的是记录程序或者其他在标准化及可能的中心化错误。它应该是一个“文本模式”的流；举一个例子,应用程序应该用"\n"作为行结束符，并且默认服务器/网关能将它转换成正确的行结束符。对许多服务器来说，`wsgi.errors`是服务器的主要错误日志。当然也有其它选择，比如`sys.stderr`，或者干脆是某种日志文件。服务器的文档应当包含这类解释：比如该如何配置这些日志，又或者该从哪里去查找这些记录下来的输出。如果需要，一个服务器或网关还可以向不同的应用程序提供不同的错误流。 |
+|wsgi.multithread	|如果应用程序对象同时被在同一个进程中的不同线程调用，则这个参数值应该为"true"，否则就为“false"|
+|wsgi.multiprocess	|如果相同的应用程序对象同时被另外一个线程调用，则此参数值应该为"true"；否则就为"false"。|
+|wsgi.run_once	|如果服务器/网关期待(但不保证)应用程序在它所在的进程生命期间只会被调用一次，则这个值应该为"true"。正常情况下，对于那些基于CGI(或类似的)的网关，这个值只会是"true"。|  
+
+最后想说的是，这个`environ`字典有可能会包含服务器定义的变量。这些变量应该用小写，数字，点号及下划线来命名，并且必须定义一个该服务器/网关特有的前缀开头。举个例子，`mod_python`在定义变量的时候，就会使用类似`mod_python.some_variable`这样的名字。
+
+#####输入和错误流 (Done)
+服务器提供的输入输出流必须提供以下的方法
+
+|方法(Method)|流(Stream)|注释(Notes)|  
+| --------| -----| ------|
+|read(size)|input|1|
+|readline()|input|1, 2|
+|readlines(hint)|input|1, 3|
+|\__iter__()|input| |
+|flush()|errors|4|
+|write(str)|errors|	
+|writelines(seq)|errors|
+	
+以上所有方法的语义在Python Library Reference里已经写得很具体了，除了在注释栏特别标注的注意点之外。
+
+1. 服务器读取的长度不一定非要超过客户端指定的`Content-length`, 并且如果应用程序尝试去读取超过那个点，则服务器可以模拟一个流结束（end-of-file）的条件。而应用程序这边则不应该去尝试读取比指定的CONTENT_LENGTH长度更多的数据。
+2. 可选参数size是不支持用于readline()方法中的，因为它有可能给开发服务器的作者们增加复杂度，所以在实际中它不常用。
+3. 请注意readlines()方法中的隐藏参数对于调用者和实现者都是可选。应用程序方可以自由选择不提供它，而服务器或网关这端也可以自由选择是否忽略它。
+4. 由于错误流不能回转(rewound)，服务器和网关可以立即选择自由地继续向前写操作(forward write)，而不需要缓存。在这种情况下，flush()方法可能就是个空操作(no-op)。不过，可移植的应用程序不能假定这个输出是无缓冲的或者flush是空操作。可移植的应用程序如果需要确保输出确实已经被写入，则必须调用flush()方法。(例如：从多进程中写入同一个日志文件的时候，可以做到最小化的数据交织）
+ 
+每一个遵循此规范的服务器都必须支持上表所列出的每一个方法。每一个遵循此规范的应用程序都不能使用除上表之外的其他方法或属性。特别需要指出的是，应用程序千万不要试图去关闭这些流，就算它们自己有对close()方法做处理。
 
 ####The start_response() Callable
 ```
@@ -397,19 +465,19 @@ pass
 
 ###鸣谢 (Done)
 
-感谢那些Web-SIG邮件组里面的人，没有他们周全的反馈，将不可能有我这篇修正草案。特别地，我要感谢：
-- mod_python的作者Gregory "Grisha" Trubetskoy，是他毫不留情地指出了我的第一版草案并没有提供任何比“普通旧版的CGI”有优势的地方，他的批评促进了我去寻找更好的方法。
-- Ian Bicking，是他总是唠叨着要我适当地提供多线程(multithreading)及多进程(multiprocess)相关选项，对了，他还不断纠缠我让我提供一种机制可以让服务器向应用程序提供自定义的扩展数据。
-- Tony Lownds，是他提出了`start_response`函数的概念，提供给它status和headers两个参数然后返回一个write函数。他的这个想法为我后来设计异常处理功能提供了灵感，尤其是在考虑到中间件复写(overrides)应用程序的错误信息这方面。
-- Alan Kennedy, 一个有勇气去尝试实现WSGI-on-Jython(在我的这份规约定稿之前)的人，他帮助我形成了“supporting older versions of Python”这一章节，以及可选的`wsgi.file_wrapper`套件。
-- Mark Nottingham，是他为这份规约的HTTP RFC 发行规范做了大量的后期检查工作，特别针对HTTP/1.1特性，没有他的指出，我甚至不知道有这东西存在。
+感谢那些Web-SIG邮件组里面的人，没有他们周全的反馈，将不可能有我这篇修正草案。特别地，我要感谢：  
+- mod_python的作者Gregory "Grisha" Trubetskoy，是他毫不留情地指出了我的第一版草案并没有提供任何比“普通旧版的CGI”有优势的地方，他的批评促进了我去寻找更好的方法。  
+- Ian Bicking，是他总是唠叨着要我适当地提供多线程(multithreading)及多进程(multiprocess)相关选项，对了，他还不断纠缠我让我提供一种机制可以让服务器向应用程序提供自定义的扩展数据。  
+- Tony Lownds，是他提出了`start_response`函数的概念，提供给它status和headers两个参数然后返回一个write函数。他的这个想法为我后来设计异常处理功能提供了灵感，尤其是在考虑到中间件复写(overrides)应用程序的错误信息这方面。  
+- Alan Kennedy, 一个有勇气去尝试实现WSGI-on-Jython(在我的这份规约定稿之前)的人，他帮助我形成了“supporting older versions of Python”这一章节，以及可选的`wsgi.file_wrapper`套件。  
+- Mark Nottingham，是他为这份规约的HTTP RFC 发行规范做了大量的后期检查工作，特别针对HTTP/1.1特性，没有他的指出，我甚至不知道有这东西存在。  
 
 ###参考文献 (Done)
-[1]	The Python Wiki "Web Programming" topic ( http://www.python.org/cgi-bin/moinmoin/WebProgramming )
-[2]	The Common Gateway Interface Specification, v 1.1, 3rd Draft ( http://ken.coar.org/cgi/draft-coar-cgi-v11-03.txt )
-[3]	"Chunked Transfer Coding" -- HTTP/1.1, section 3.6.1 ( http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1 )
-[4]	"End-to-end and Hop-by-hop Headers" -- HTTP/1.1, Section 13.5.1 ( http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.5.1 )
-[5]	mod_ssl Reference, "Environment Variables" ( http://www.modssl.org/docs/2.8/ssl_reference.html#ToC25 )
-###版权声明(Done)
-这篇文档被托管在Mercurial上面.
-原文链接: https://hg.python.org/peps/file/tip/pep-0333.txt
+[1]	The Python Wiki "Web Programming" topic ( http://www.python.org/cgi-bin/moinmoin/WebProgramming )  
+[2]	The Common Gateway Interface Specification, v 1.1, 3rd Draft ( http://ken.coar.org/cgi/draft-coar-cgi-v11-03.txt )  
+[3]	"Chunked Transfer Coding" -- HTTP/1.1, section 3.6.1 ( http://www.w3.org/Protocols/rfc2616/rfc2616-sec3.html#sec3.6.1 )  
+[4]	"End-to-end and Hop-by-hop Headers" -- HTTP/1.1, Section 13.5.1 ( http://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html#sec13.5.1 )  
+[5]	mod_ssl Reference, "Environment Variables" ( http://www.modssl.org/docs/2.8/ssl_reference.html#ToC25 )  
+###版权声明(Done)  
+这篇文档被托管在Mercurial上面.  
+原文链接: https://hg.python.org/peps/file/tip/pep-0333.txt  
