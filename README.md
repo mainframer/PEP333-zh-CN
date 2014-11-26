@@ -401,15 +401,43 @@ pass
 pass
 ```
 
-####Unicode Issues
-```
-pass
-```
+####Unicode问题 (Done) 
 
-####错误处理  
+HTTP不直接支持Unicode，同样的这份接口也不支持Unicode。所有的编码/解码应当由应用程序来处理；所有传递给服务器的或从服务器传出的字符串都必须是python标准的字节字符串而不能是Unicode对象。在要求使用字符串对象的地方使用Unicode对象，这会产生不可预料的结果。
+
+注意 所有的作为状态或响应头传给start_response()方法的字符串在编码方面都必须遵循RFC2616的编码。也就是说，它们必须使用ISO-8859-1字符，或者使用RFC 2047 MIME编码。
+
+Python平台的str或StringType实际上是基于Unicode(如jython,ironPython, python 3000等)，这份规约中提到的所有的"字符串"都只限定在ISO-8859-1编码规范中可表示的代码点（从\u0000-\u00FF）。如果应用程序提供的字符串包含任何其它的Unicode字符或编码点(code points)，这将是个致命的错误。同样地，服务器和网关也不能向应用程序提供任何Unicode字符。
+
+再次声明，本规约中提到的所有的字符串都必须是str类型或StringType，不能是unicode类型或UnicodeType。并且，就本规约中所提到的“字符串”，即使一个平台支持str/StringType对象超过8比特每字符，也仅仅是该“字符串”的低8位比特被用到。
+
+####错误处理 (Done) 
+
+一般来说，应用程序应当自己负责捕获自己的内部错误，并向浏览器输出有用的信息。(在这一方面，应用程序自己来决定哪些信息是有用的。)
+
+然而，要显示这些信息，并不是说应用程序真的向浏览器发送了数据，这样做的话有让response损坏的危险。因此WSGI提供了一种机制，要么允许应用程序发送它自己的错误信息，要么就自动地终止应用程序：start_response的exc_info参数。这里有个如何使用的例子。
+```python
+try:
+    # regular application code here
+    status = "200 Froody"
+    response_headers = [("content-type", "text/plain")]
+    start_response(status, response_headers)
+    return ["normal body goes here"]
+except:
+    # XXX should trap runtime issues like MemoryError, KeyboardInterrupt
+    #     in a separate handler before this bare 'except:'...
+    status = "500 Oops"
+    response_headers = [("content-type", "text/plain")]
+    start_response(status, response_headers, sys.exc_info())
+    return ["error body goes here"]
 ```
-pass
-``` 
+如果当有异常发生但是输出还没有被写入时，对start\_response的调用将正常返回，然后应用程序返回一个错误信息体发到浏览器。然而如果已经有部分输出发到浏览器了的话，则start_response会重新抛出准备好的异常。这个异常不能被应用程序捕获，所以应用程序它会异常终止。服务器/网关会捕获异常这个关键的异常并终止响应。  
+
+服务器应该捕获任何促使应用程序终止的异常或者迭代返回的值，并记录日志。如果应用程序出错的时候已经有一部分response被发送到浏览器了，服务器或网关可以试图添加一个错误消息到output，当然前提是已经发送了的部分信息里面有指明text/* content 类型的头信息，因为那样的话服务器就知道应该如何利索地修改。
+
+一些中间件可能会希望提供额外的异常处理服务，或拦截并替换应用程序的异常信息。在这种情况下，中间件可能选择不再重新抛出提供给start_response的exc\_info，换作抛出中间件自己特有的异常，或者在存储了提供的参数之后简单地返回而不包含异常。这将导致应用程序返回错误的body iterable（或调用write()）.允许中间件来捕获并修改错误输出。这些技术只有在应用程序的开发者们做到下面几点时才起效：  
+1. 每一次当开始一个错误的响应的时候，都提供exc_info。  
+2. 当exc_info已经提供的情况下，千万不要去捕获由start_response产生的异常。 
 
 ####Http1.1的长连接
 ```
