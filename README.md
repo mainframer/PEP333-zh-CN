@@ -487,10 +487,49 @@ def new_app(environ, start_response):
 ```
 但是，大多数现有的应用程序和框架很大可能只需用到environ里面的唯一一个配置值，用来指示它们的应用程序或框架特有的配置文件位置。（当然，应用程序应当缓存这些配置，以避免每次调用都重复读取）
 
-#### URL的构建
+####URL的构建 (Done)
+如果应用程序希望重建一个请求的完整URL,可以使用下面的算法，该算法由lan Bicking提供：
+```python
+from urllib import quote
+url = environ['wsgi.url_scheme']+'://'
+
+if environ.get('HTTP_HOST'):
+    url += environ['HTTP_HOST']
+else:
+    url += environ['SERVER_NAME']
+
+    if environ['wsgi.url_scheme'] == 'https':
+        if environ['SERVER_PORT'] != '443':
+           url += ':' + environ['SERVER_PORT']
+    else:
+        if environ['SERVER_PORT'] != '80':
+           url += ':' + environ['SERVER_PORT']
+
+url += quote(environ.get('SCRIPT_NAME', ''))
+url += quote(environ.get('PATH_INFO', ''))
+if environ.get('QUERY_STRING'):
+    url += '?' + environ['QUERY_STRING']
 ```
-pass
-```
+注意，通过这种方式重建出来的URL可能跟客户端真实发过来的URI有些差别。举个例子，服务器重写规则可能会修改客户端原始请求的URL以便让它看起来更规范。
+
+
+####对Python2.2之前的版本的支持 (Done)
+
+一些服务器，网关或者应用程序可能希望对Python2.2之前的版本提供支持。尤其在目标平台是Jython时显得特别重要，因为在我写这篇文档的时候，还没有一个生产版本的Jython 2.2。
+
+对于服务器和网关来说，这是相当直接的：打算使用Python 2.2之前版本的服务器和网关，只需简单地限定它们自己只使用标准的"for"循环来迭代应用程序返回来的任何iterable即可。这是能在代码级别确保2.2版本之前的迭代器协议(后续会讲)跟“现在的”迭代器协议(参照PEP234)兼容的唯一方法。
+
+(需要注意的是，这个技巧当然只针对那些Python写的服务器，网关，或者中间件。置于如何正确地在其他语言中使用迭代器协议则不再我们这份PEP的讨论范围之内。)
+
+而对于应用程序，要提供对Python2.2之前的版本的支持则会稍微复杂些：
+
+由于Python 2.2之前，文件并不是可迭代的，故你不能返回一个文件对象并期望它能像iterable一样工作。(总体上，你也不能这么做，因为大部分情况下这样做的表现很糟糕)。可以使用`wsgi.file_wrapper`或者一个应用程序特有的文件包装类。(参照`Optional Platform-Specific File Handling`章节获取更多关于`sgi.file_wrapper`的信息，该章节包含了一个教你如何将一个文件包装成一个iterable）
+
+如果你想返回一个定制的iterable，那么它必须实现2.2版本之前的迭代器协议。也就是说，提供一个` __getitem__`方法来接收一个整形的键值，然后在所有数据都取完的时候抛出一个IndexError异常。（注意，使用内置的序列类型也是可行的，因为它也实现了这个迭代器协议)
+
+最后，如果中间件也希望对Python2.2之前的版本提供支持，迭代应用程序返回的所有值或它自己返回一个iterable(又或者两者都有),那么这些中间件必须遵循以上提到的这些建议。
+
+(另外，为了支持Python2.2之前的版本，毫无疑问，任何服务器，网关，应用程序，或者中间件必须只能使用该版本有的语言特性，比如用1和0，而不是True和False，类似这样的)
 ###QA问答
 1.为什么evniron必须是字典？用子类(subclass)不行吗？ (Done)
 用字典的原理是为了最大化地满足在服务器间的移植性。另一种选择就是定义一些字典方法的子集，并以字典的方法作为标准的便捷的接口。然而事实上，大多服务器可能只需要找到一个合适的字典就足够它们用了，并且框架的作者往往期待完整的字典特性可用，因为多半情况是这样的。但是如果有一些服务器选择不用字典，那么尽管这类服务器也“符合”规范，但会有互用性的问题出现。因此使用强制的字典简化了规范和并确保了互用性。。
