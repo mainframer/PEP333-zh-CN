@@ -617,6 +617,61 @@ if environ.get('QUERY_STRING'):
 
 (另外，为了支持Python2.2之前的版本，毫无疑问，任何服务器，网关，应用程序，或者中间件必须只能使用该版本有的语言特性，比如用1和0，而不是True和False，类似这样的)
 
+<a name="optional"/>
+####可选的平台相关的文件处理
+一些操作环境提供高性能的文件传输设施，像Unix的sendfile()方法。服务器和网关可能会通过environ中的wsgi.file_wrapper选项来揭示这功能。用于程序可以使用这样的文件包装来转换文件或类文件对象到他们返回的迭代中去。例如：
+
+```python
+if 'wsgi.file_wrapper' in environ:
+    return environ['wsgi.file_wrapper'](filelike, block_size)
+else:
+    return iter(lambda: filelike.read(block_size), '')
+```
+如果服务器或网关提供wsgi.file_wrapper，它必须是个可调用的，并且接受一个必要的位置参数，和一个可选的位置参数。第一个参数是将被发送的类文件对象，第二个参数是可选的，标示分快大小的建议（这个服务器/网关不需要）。这个调用必须返回一个可迭代的对象，并且不能执行任何的数据传输直到服务器/网关真正接受到了作为应用程序返回值的迭代对象（否则会阻止中间件解析或覆盖响应体）。
+ 
+由应用程序提供的被认为是类文件的对象必须有可选大小参数的read()方法。它或许有close()方法，如果有，那么wsgi.file_wrapper必须有一个会调用类文件对象原始close()方法的close()方法。如果类文件对象有任何的方法或属性与Python内置的文件对象的属性或方法名相同（例如fileno()），那么wsgi.file_warpper可能会假定这些方法和属性与Python内置的语义是相同的。
+ 
+实际在任何特定平台上实现的文件处理必须发生在应用程序返回之后，并且服务器/网关检查是否是一个包装对象被返回。（再次声明，因为存在的中间件，错误处理等等类似的东西，它不保证任何生成的包装会被实际使用）
+ 
+除了处理close(),从语义上讲，应用程序返回一个包装的文件应该和返回iter(filelike.read, '')一样。换句话说，当传输开始的时候，应当从文件的当前位置开始传输，并且继续直到最后完成。
+ 
+当然，特定平台的文件传输API通常不接受随意的类文件对象，所以，一个wsgi.file_wrapper为了判断类文件对象是否适应于他们特定的平台，不得不对提供的对象做一些像fileno()(Unix-like OSes)或者是java.nio.FileChannel(在Jython下)的自省检查。
+ 
+注意：即使对象不适用与特定的平台API，wsgi.file_wrapper必须仍旧返回一个包装了read()和close()的迭代，因此应用程序使用这文件包装器便可以再不同平台间移植。这里有个简单的平台无关的文件包装类，适应于老（2.2之前）的和新的python，如下：
+```python
+class FileWrapper:
+
+    def __init__(self, filelike, blksize=8192):
+        self.filelike = filelike
+        self.blksize = blksize
+        if hasattr(filelike, 'close'):
+            self.close = filelike.close
+
+    def __getitem__(self, key):
+        data = self.filelike.read(self.blksize)
+        if data:
+            return data
+        raise IndexError
+and here is a snippet from a server/gateway that uses it to provide access to a platform-specific API:
+
+environ['wsgi.file_wrapper'] = FileWrapper
+result = application(environ, start_response)
+
+try:
+    if isinstance(result, FileWrapper):
+        # check if result.filelike is usable w/platform-specific
+        # API, and if so, use that API to transmit the result.
+        # If not, fall through to normal iterable handling
+        # loop below.
+
+    for data in result:
+        # etc.
+
+finally:
+    if hasattr(result, 'close'):
+        result.close()
+```
+
 <a name="QA"/>
 ###QA问答
 1.为什么evniron必须是字典？用子类(subclass)不行吗？
