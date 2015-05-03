@@ -3,7 +3,7 @@
 > 翻译自 `Python Web Server Gateway Interface v1.0`  [PEP 333 - Python Web Server Gateway Interface v1.0](https://www.python.org/dev/peps/pep-0333/)
 
 ##译者的话
->Python基础学完后，免不了要深入到Python的主流Web框架（Python科学计算那部分暂时用不到可以先不管），在学习Flask这些框架的过程中发现它们的底层都是WSGI协议，故决定先啃下WSGI，鉴于目前网上几乎没有（完整的）WSGI中文版，于是干脆自己翻译，这样也有助于加深自己的理解，也能够帮助到一些初学者。
+>Python基础学完后，免不了要深入到Python的主流Web框架（Python科学计算那部分暂时用不到可以先不管），在学习Flask这些框架的过程中发现它们的底层都是WSGI协议，故决定先啃下WSGI，鉴于目前网上几乎没有（完整的）WSGI中文版，于是干脆自己翻译，这样也有助于加深自己的理解，同时也能够帮助到一些初学者。
 
 ##内容
 * [序言](#preface)
@@ -40,7 +40,7 @@
 
 <a name="preface"/>
 ###序言
-注意：关于本规范的后续版本，请参照 [PEP 3333](https://www.python.org/dev/peps/pep-3333)，它是支持Python 3.x 的更新版本并且包含一些社区勘误，补充，更正的相关说明等。
+注意：关于本规范的后续版本，请参照 [PEP 3333](https://www.python.org/dev/peps/pep-3333)，PEP 3333是支持Python 3.x 的新版本，同时还包含了一些社区勘误，补充，更正的相关说明信息。
 
 <a name="abstract"/>
 ###摘要
@@ -48,17 +48,17 @@
 
 <a name="goal"/>
 ###基本原理及目标
-Python目前拥有大量的web框架，比如 Zope，Quixote，Webware， SkunkWeb，PSO 和Twisted Web -- 这里我仅列举出几个 [[1]](#refrence)。这么多的选择让新手无所适从，因为总的来说，框架的选择有可能会反过来限制web服务器的选择。
+Python目前拥有大量的web框架，比如 Zope，Quixote，Webware， SkunkWeb，PSO 和Twisted Web -- 这里我仅列举出这么几个 [[1]](#refrence)。这么多的选择让新手无所适从，因为整体上，选择什么样的框架有时会反过来限制对web服务器的选择。
 
-相比之下，虽然java也拥有众多web框架，但是java的 **servlet API** 使得使用任何框架编写出来的应用程序都可以在所有支持  **servlet API** 的web服务器上运行。
+相比之下，虽然java也拥有众多web的框架，但是java的 **servlet API** 使得用任何框架编写出来的应用程序都可以在所有支持  **servlet API** 的web服务器上运行。
 
-服务器中这种针对Python的API（**不管服务器是用python写的（如: Medusa），还是内嵌python（如: mod_python），亦或是通过一种网关协议来调用Python（如:CGI, FastCGI等）**)的使用和普及，将人们从web框架的选择和web服务器的选择中分离开来，使他们能偶任意选择适合自己的组合，而web服务器和web框架的开发者们也能够把精力集中到各自的领域。  
+服务器中这种针对Python的API的使用和普及（**不管服务器是用python写的（如: Medusa），还是内嵌python（如: mod_python），亦或是通过一种网关协议来调用Python（如:CGI, FastCGI等）**)，把人们从web框架的选择和web服务器的选择中剥离开来，使他们能够任意选择适合自己的组合，而web服务器和web框架的开发者们也能够把精力集中到各自的领域。  
 
-基于此，这份PEP建议在web服务器和web应用程序/web框架之间建立一种简单通用的接口规范，即Python Web服务器网关接口（简称WSGI）。
+鉴于此，这份PEP建议在web服务器和web应用程序/web框架之间建立一种简单通用的接口规范，即Python Web服务器网关接口（简称WSGI）。
 
 但是光有这么一份规范，对于改变web服务器和web应用程序/框架的现状还是不够的，只有当那些web服务器和web框架的作者/维护者们真正地实现了WSGI，这份WSGI规范才能起到它该起的作用。  
 
-然而，由于目前还没有任何框架或服务器实现了WSGI，而那些转向支持WSGI的框架作者们也不会得到任何直接的奖励或者好处，因此，我们的这份WSGI必须要拟定地足够容易实现，这样才能降低框架作者们在实现接口这件事上的初始投资成本。
+不过，由于目前还没有任何框架或服务器实现了WSGI，而那些新转向支持WSGI的框架作者们也不会从我们这得到任何直接的奖励或者好处，所以，我们的这份WSGI必须要拟定地足够容易实现，这样才能降低框架作者们在实现接口这件事上的初始投资成本。
  
 由此可见，服务器和框架两边接口实现的简单性，对于提高WSGI的实用性来说，绝对是非常重要的，同时，这一点也是任何设计决策的首要依据。
  
@@ -118,7 +118,7 @@ class AppClass:
 
 <a name="server"/> 
 ####服务器/网关 端
-每一次，当HTTP客户端冲着应用程序发来一个请求，服务器/网关都会调用应用程序可调用者（callable）。为了说明方便，这里有一个CGI网关，简单的说它就是一个以应用程序对象为参数的函数实现，注意，本例中对错误只做了有限的处理，因为默认情况下没有被捕获到的异常都会被输出到`sys.stderr`并被服务器记录下来。
+每一次，当HTTP客户端冲着应用程序发来一个请求，服务器/网关都会调用应用程序可调用者（callable）。为了阐述方便，这里有一个CGI网关，简单的说它就是一个以应用程序对象为参数的函数实现，注意，本例中对错误只做了有限的处理，因为默认情况下没有被捕获到的异常都会被输出到`sys.stderr`并被服务器记录下来。
 
 ```python
 import os, sys
@@ -273,9 +273,9 @@ run_with_cgi(Latinator(foo_app))
   
 `start_response`参数是一个可调用者（callable），它接受两个必要的位置参数和一个可选参数。为方便说明，我们分别将它们命名为`status`，`response_headers`和 `exc_info` 。再强调一遍，这并不是说它们一定要用这些名字。应用程序必须用这些位置参数来请求可调用者 `start_response`可调用者（比如像这样：`start_response(status,response_headers)`)。
 
-`status`参数是一个形式如"**999 Message here**"这样的状态字符串。而`response_headers`参数是一个包含有（header_name,header_value）参数列表的元组，用来描述HTTP的响应头。可选的`exc_info`参数会在接下来的 [可调用者start_response()](#start_response) 和 [错误处理](#error) 两章节中详细描述，它只有在应用程序捕获到了错误并试图在浏览器中显示错误的时候才会被用到。
+`status`参数是一个形式如“**999 Message here**”这样的状态字符串。而`response_headers`参数是一个包含有（header_name,header_value）参数列表的元组，用来描述HTTP的响应头。可选的`exc_info`参数会在接下来的 [可调用者start_response()](#start_response) 和 [错误处理](#error) 两章节中详细描述，它只有在应用程序捕获到了错误并试图在浏览器中显示错误的时候才会被用到。
 
-`start_response` 可调用者（callable）必须返回一个 `write(body_data)` 可调用者（callable），`write(body_data)`接受一个位置参数：一个将会被当作HTTP响应体的一部分而输出的字符串（注意：提供可调用者 `write()` 只是为了支持一些现有框架的命令式输出APIs；新的应用程序或框架应当尽量避免使用`write()`，详细情况请看 [缓冲和流](#buffer) 章节。)
+`start_response` 可调用者（callable）必须返回一个 `write(body_data)` 可调用者（callable），`write(body_data)`接受一个位置参数：一个将会被当作HTTP响应体的一部分而输出的字符串（注意：提供可调用者 `write()` 只是为了支持一些现有框架的命令式输出APIs；新的应用程序或框架应当尽量避免使用`write()`，详细情况请参照 [缓冲和流](#buffer) 章节。)
 
 当应用程序被服务器调用的时候，它必须返回一个能够生成0个或多个字符串的可迭代者（iterable）。可以通过几种方式来实现，比如通过返回一个包含一系列字符串的列表，或者是让应用程序本身就是一个能生成多个字符串的生成器（generator），又或者是使应用程序本身是一个类并且这个类的实例是一个可迭代者（iterable）。总之，不论通过什么途径完成，应用程序对象必须总是能返回一个能够生成0个或多个字符串的可迭代者（iterable）。
 
